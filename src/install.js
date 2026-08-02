@@ -46,6 +46,17 @@ async function packAndInstall(project, options = {}) {
   return installProject(project, { ...options, archivePath });
 }
 
+async function getPluginLogs(project, options = {}) {
+  const serverUrl = normalizeServerUrl(options.serverUrl || project.serverUrl);
+  const apiKey = options.apiKey || project.apiKey;
+  if (!serverUrl) throw new Error("Komari server URL is required; use --server or KOMARI_SERVER_URL");
+  if (!apiKey) throw new Error("Komari API Key is required; use --api-key or KOMARI_API_KEY");
+  const result = await rpcCall(serverUrl, apiKey, "admin:getPluginLogs", {
+    short: project.manifest.short,
+  });
+  return result && typeof result.logs === "string" ? result.logs : "";
+}
+
 async function findPlugin(serverUrl, apiKey, short) {
   const plugins = await rpcCall(serverUrl, apiKey, "admin:listPlugins");
   if (Array.isArray(plugins)) return plugins.find((plugin) => plugin.short === short) || null;
@@ -88,4 +99,4 @@ function normalizeServerUrl(value) {
   return new URL(value).toString().replace(/\/$/, "");
 }
 
-module.exports = { installProject, packAndInstall };
+module.exports = { getPluginLogs, installProject, packAndInstall };

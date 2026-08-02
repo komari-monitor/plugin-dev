@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { resolveLocale } = require("./i18n");
 
 function readJson(file) {
   try {
@@ -53,6 +54,9 @@ function loadProject(root = process.cwd()) {
   const archive = config.archive || path.join(outputDir, `${manifest.short}-${manifest.version || "dev"}.zip`);
   const serverUrl = env.KOMARI_SERVER_URL || localConfig.serverUrl || config.serverUrl;
   const apiKey = env.KOMARI_API_KEY || localConfig.apiKey;
+  const locale = resolveLocale(
+    env.KOMARI_LANG || localConfig.language || localConfig.locale || config.language,
+  );
 
   return {
     root,
@@ -67,6 +71,7 @@ function loadProject(root = process.cwd()) {
     archive,
     serverUrl,
     apiKey,
+    locale,
   };
 }
 

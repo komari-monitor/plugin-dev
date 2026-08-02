@@ -4,53 +4,88 @@ const path = require("node:path");
 const { buildProject } = require("./build");
 const { assertProject, checkProject } = require("./check");
 const { installProject, packAndInstall } = require("./install");
+const { getMessages, resolveLocale } = require("./i18n");
+const { normalizeInterval, printLogLines, readPluginLogDelta } = require("./logs");
 const { loadProject } = require("./project");
 const { packProject } = require("./pack");
 
 async function main(argv) {
   const { command, options } = parseArgs(argv);
-  if (command === "help" || command === "--help" || command === "-h") {
-    printHelp();
+  if (command === "help" || command === "--help" || command === "-h" || options.help) {
+    printHelp(options.lang);
     return;
   }
 
   const project = loadProject(options.cwd || process.cwd());
+  const text = getMessages(options.lang ? resolveLocale(options.lang) : project.locale);
   switch (command) {
     case "check":
-      runCheck(project);
+      runCheck(project, text);
       return;
     case "build":
       await buildProject(project);
       return;
     case "pack":
       await packProject(project);
-      console.log(`Packed ${project.archive}`);
+      console.log(text.packed(project.archive));
       return;
     case "install":
       assertProject(project, { allowMissingEntry: true });
       await buildProject(project);
       await packProject(project);
-      printInstall(await installProject(project, { ...options, enable: options.enable === true }));
+      printInstall(await installProject(project, { ...options, enable: options.enable === true }), text);
       return;
     case "dev":
-      await dev(project, options);
+      await dev(project, options, text);
       return;
     default:
       throw new Error(`unknown command ${command}; run komari-plugin-dev help`);
   }
 }
 
-function runCheck(project) {
+function runCheck(project, text) {
   const errors = checkProject(project, { allowMissingEntry: true });
   if (errors.length > 0) throw new Error(errors.join("\n"));
-  console.log(`OK ${project.manifest.short}: manifest and package files are valid`);
+  console.log(text.checkOk(project.manifest.short));
 }
 
-async function dev(project, options) {
+async function dev(project, options, text) {
+  const logState = { value: "" };
+  const logInterval = normalizeInterval(options.logInterval);
+  let logsReady = false;
+  let logPolling = false;
+  let logTimer;
+  let lastLogError = "";
+
   const cycle = async () => {
     await buildProject(project);
     const result = await packAndInstall(project, { ...options, enable: true });
-    printInstall(result);
+    printInstall(result, text);
+    logsReady = options.logs !== false;
+    logState.value = "";
+    lastLogError = "";
+  };
+
+  const pollLogs = async () => {
+    if (!logsReady || logPolling) return;
+    logPolling = true;
+    try {
+      const delta = await readPluginLogDelta(project, options, logState);
+      printLogLines(delta, (line) => console.log(text.log(line)));
+      lastLogError = "";
+    } catch (error) {
+      if (error.message !== lastLogError) {
+        console.error(text.logFollowError(error.message));
+        lastLogError = error.message;
+      }
+    } finally {
+      logPolling = false;
+    }
+  };
+
+  const ensureLogTimer = () => {
+    if (options.logs === false || logTimer || !logsReady) return;
+    logTimer = setInterval(() => void pollLogs(), logInterval);
   };
 
   try {
@@ -59,7 +94,12 @@ async function dev(project, options) {
     console.error(`[dev] ${error.message}`);
     if (options.once) throw error;
   }
-  if (options.once) return;
+  if (options.once) {
+    await pollLogs();
+    return;
+  }
+  await pollLogs();
+  ensureLogTimer();
 
   let running = false;
   let queued = false;
@@ -71,6 +111,8 @@ async function dev(project, options) {
     running = true;
     try {
       await cycle();
+      await pollLogs();
+      ensureLogTimer();
     } catch (error) {
       console.error(`[dev] ${error.message}`);
     } finally {
@@ -108,13 +150,17 @@ async function dev(project, options) {
   };
   const watcher = chokidar.watch([...new Set(watchTargets)], { ignored, ignoreInitial: true });
   watcher.on("all", (_event, file) => {
-    console.log(`[dev] changed ${path.relative(project.root, file)}`);
+    console.log(text.changed(path.relative(project.root, file)));
     void trigger();
   });
-  console.log(`[dev] watching ${project.root}`);
+  console.log(text.watching(project.root));
 
   await new Promise((resolve) => {
+    let stopped = false;
     const stop = async () => {
+      if (stopped) return;
+      stopped = true;
+      if (logTimer) clearInterval(logTimer);
       await watcher.close();
       resolve();
     };
@@ -123,16 +169,16 @@ async function dev(project, options) {
   });
 }
 
-function printInstall(result) {
+function printInstall(result, text = getMessages("en")) {
   const plugin = result.plugin;
   if (!plugin) {
-    console.log(`[dev] uploaded ${result.short}; plugin status is unavailable`);
+    console.log(text.uploadedUnavailable(result.short));
     return;
   }
-  console.log(`[dev] ${result.short}: enabled=${Boolean(plugin.enabled)} running=${Boolean(plugin.running)}`);
-  if (plugin.last_error) console.error(`[dev] last_error: ${plugin.last_error}`);
+  console.log(text.status(result.short, Boolean(plugin.enabled), Boolean(plugin.running)));
+  if (plugin.last_error) console.error(text.lastError(plugin.last_error));
   if (result.enable && result.enable.requires_approval) {
-    console.log("[dev] permissions require approval; approve them in Komari before continuing");
+    console.log(text.approval);
   }
 }
 
@@ -141,9 +187,14 @@ function parseArgs(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--once") options.once = true;
+    if (arg === "--help" || arg === "-h") options.help = true;
+    else if (arg === "--once") options.once = true;
     else if (arg === "--approved") options.approved = true;
     else if (arg === "--enable") options.enable = true;
+    else if (arg === "--no-logs") options.logs = false;
+    else if (arg === "--logs") options.logs = true;
+    else if (arg === "--log-interval") options.logInterval = requireOptionValue(argv, ++index, arg);
+    else if (arg === "--lang" || arg === "--language") options.lang = requireOptionValue(argv, ++index, arg);
     else if (arg === "--server") options.serverUrl = requireOptionValue(argv, ++index, arg);
     else if (arg === "--api-key") options.apiKey = requireOptionValue(argv, ++index, arg);
     else if (arg === "--cwd") options.cwd = requireOptionValue(argv, ++index, arg);
@@ -158,19 +209,20 @@ function requireOptionValue(argv, index, option) {
   return value;
 }
 
-function printHelp() {
-  console.log(`Komari plugin development tools
+function printHelp(locale) {
+  const text = getMessages(locale ? resolveLocale(locale) : resolveLocale());
+  console.log(`${text.helpTitle}
 
-Usage:
+${text.helpUsage}
   komari-plugin-dev check
   komari-plugin-dev build
   komari-plugin-dev pack
-  komari-plugin-dev install [--server URL] [--api-key KEY] [--enable] [--approved]
-  komari-plugin-dev dev [--server URL] [--api-key KEY] [--once] [--approved]
+${text.helpInstall}
+${text.helpDev}
 
-Connection settings are read from command-line options, KOMARI_SERVER_URL /
-KOMARI_API_KEY, or the gitignored komari.local.json file.
+${text.helpConnection}
+${text.helpLanguage}
 `);
 }
 
-module.exports = { main };
+module.exports = { main, parseArgs };
