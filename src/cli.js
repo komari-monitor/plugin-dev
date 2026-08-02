@@ -60,10 +60,11 @@ async function dev(project, options, text) {
   const cycle = async () => {
     await buildProject(project);
     const result = await packAndInstall(project, { ...options, enable: true });
-    printInstall(result, text);
     logsReady = options.logs !== false;
     logState.value = "";
     lastLogError = "";
+    await pollLogs();
+    printInstall(result, text);
   };
 
   const pollLogs = async () => {
