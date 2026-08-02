@@ -150,11 +150,9 @@ async function dev(project, options, text) {
       normalized === archivePath;
   };
   const watcher = chokidar.watch([...new Set(watchTargets)], { ignored, ignoreInitial: true });
-  watcher.on("all", (_event, file) => {
-    console.log(text.changed(path.relative(project.root, file)));
+  watcher.on("all", () => {
     void trigger();
   });
-  console.log(text.watching(project.root));
 
   await new Promise((resolve) => {
     let stopped = false;
