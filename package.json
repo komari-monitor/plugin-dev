@@ -1,0 +1,39 @@
+{
+  "name": "@komari-monitor/plugin-dev",
+  "version": "1.4.0",
+  "komariVersion": "1.4.0",
+  "description": "Build, validate, package, install and watch Komari plugins",
+  "license": "MIT",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "bin": {
+    "komari-plugin-dev": "bin/komari-plugin-dev.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/check.test.js"
+  },
+  "dependencies": {
+    "@komari-monitor/plugin-sdk": "1.4.0",
+    "archiver": "^7.0.1",
+    "chokidar": "^4.0.3",
+    "esbuild": "^0.28.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/komari-monitor/plugin-dev.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
