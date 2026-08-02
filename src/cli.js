@@ -60,10 +60,11 @@ async function dev(project, options, text) {
   const cycle = async () => {
     await buildProject(project);
     const result = await packAndInstall(project, { ...options, enable: true });
-    printInstall(result, text);
     logsReady = options.logs !== false;
     logState.value = "";
     lastLogError = "";
+    await pollLogs();
+    printInstall(result, text);
   };
 
   const pollLogs = async () => {
@@ -149,11 +150,9 @@ async function dev(project, options, text) {
       normalized === archivePath;
   };
   const watcher = chokidar.watch([...new Set(watchTargets)], { ignored, ignoreInitial: true });
-  watcher.on("all", (_event, file) => {
-    console.log(text.changed(path.relative(project.root, file)));
+  watcher.on("all", () => {
     void trigger();
   });
-  console.log(text.watching(project.root));
 
   await new Promise((resolve) => {
     let stopped = false;
