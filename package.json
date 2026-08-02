@@ -1,7 +1,7 @@
 {
   "name": "@komari-monitor/plugin-dev",
-  "version": "1.4.0",
-  "komariVersion": "1.4.0",
+  "version": "1.4.1",
+  "komariVersion": "1.4.1",
   "description": "Build, validate, package, install and watch Komari plugins",
   "license": "MIT",
   "main": "./src/index.js",
@@ -21,7 +21,7 @@
     "test": "node --test test/check.test.js"
   },
   "dependencies": {
-    "@komari-monitor/plugin-sdk": "1.4.0",
+    "@komari-monitor/plugin-sdk": "1.4.1",
     "archiver": "^7.0.1",
     "chokidar": "^4.0.3",
     "esbuild": "^0.28.0"
