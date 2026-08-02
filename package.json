@@ -1,6 +1,6 @@
 {
   "name": "@komari-monitor/plugin-dev",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "komariVersion": "1.4.x",
   "description": "Build, validate, package, install and watch Komari plugins",
   "license": "MIT",
