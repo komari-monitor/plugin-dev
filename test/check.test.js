@@ -7,7 +7,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { loadProject } = require("../src/project");
 const { checkProject } = require("../src/check");
-const { getPluginLogs } = require("../src/install");
+const { getPluginLogs, installProject } = require("../src/install");
 const { logDelta, normalizeInterval, printLogLines } = require("../src/logs");
 const { parseArgs } = require("../src/cli");
 
@@ -80,3 +80,60 @@ test("getPluginLogs calls the typed admin RPC endpoint", async () => {
     global.fetch = originalFetch;
   }
 });
+
+test("install uploads plugin packages through the chunked API with retries", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "komari-plugin-dev-"));
+  const archivePath = path.join(root, "plugin.zip");
+  fs.writeFileSync(archivePath, "zip");
+  const originalFetch = global.fetch;
+  const requests = [];
+  let chunkAttempts = 0;
+  global.fetch = async (url, init) => {
+    requests.push({ url, init });
+    if (url.endsWith("/upload/init")) {
+      return response({
+        status: "success",
+        data: { upload_id: "upload-1", chunk_size: 5 * 1024 * 1024 },
+      });
+    }
+    if (url.endsWith("/upload/chunk")) {
+      chunkAttempts += 1;
+      if (chunkAttempts === 1) return response({ status: "error", message: "retry" }, 500);
+      return response({ status: "success" });
+    }
+    if (url.endsWith("/upload/merge")) return response({ status: "success", data: {} });
+    if (url.endsWith("/api/rpc2")) return response({ result: [] });
+    throw new Error(`unexpected request: ${url}`);
+  };
+  try {
+    await installProject({
+      root,
+      archive: "plugin.zip",
+      serverUrl: "http://localhost:25774",
+      apiKey: "secret",
+      manifest: { short: "demo" },
+    });
+    assert.equal(chunkAttempts, 2);
+    assert.deepEqual(JSON.parse(requests[0].init.body), {
+      purpose: "plugin",
+      size: 3,
+      filename: "plugin.zip",
+    });
+    assert.equal(requests[0].url, "http://localhost:25774/api/admin/upload/init");
+    assert.equal(requests[1].url, "http://localhost:25774/api/admin/upload/chunk");
+    assert.equal(requests[3].url, "http://localhost:25774/api/admin/upload/merge");
+    assert.equal(requests[4].url, "http://localhost:25774/api/rpc2");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+function response(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async text() {
+      return JSON.stringify(body);
+    },
+  };
+}

@@ -38,12 +38,12 @@ manifest:
 Save that as `komari.local.json` and add it to `.gitignore`, or use
 `KOMARI_SERVER_URL` and `KOMARI_API_KEY` environment variables.
 
-`dev` reuses Komari's existing `POST /api/admin/plugin/install` endpoint. A
-running plugin is unloaded, replaced, and loaded again by the server, so the
-plugin's enabled state and persistent storage are preserved. `dev` also asks
-the server to enable the plugin after the first install; use `--approved` when
-the manifest requests permissions that require approval. `install` only
-enables the plugin when passed `--enable`.
+`dev` uploads plugin packages through Komari's chunked upload API. A running
+plugin is unloaded, replaced, and loaded again by the server, so the plugin's
+enabled state and persistent storage are preserved. `dev` also asks the server
+to enable the plugin after the first install; use `--approved` when the
+manifest requests permissions that require approval. `install` only enables
+the plugin when passed `--enable`.
 
 `dev` follows the plugin's runtime log buffer through the existing
 `admin:getPluginLogs` RPC and prints new lines as they arrive. It polls every
